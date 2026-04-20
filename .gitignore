@@ -2,5 +2,5 @@ node_modules/
 .env
 .DS_Store
 .claude/
-**/.playwright-mcp/
+.playwright-mcp/
 *.png
