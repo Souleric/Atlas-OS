@@ -77,6 +77,8 @@ async function sendApproval(userId, action) {
       `Project: ${escapeMarkdown(projectName)}\n` +
       `Change: ${escapeMarkdown(field)} → *${escapeMarkdown(value)}*\n\n` +
       `Reply *YES* to confirm · *NO* to cancel`
+  } else if (action.type === 'email_compose') {
+    return // caller handles its own prompt
   }
 
   await bot.telegram.sendMessage(userId, message, { parse_mode: 'Markdown' })
