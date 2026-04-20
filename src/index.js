@@ -104,18 +104,8 @@ async function start() {
     await sendToOwner(`Atlas is online. ⚠️ Memory offline: ${memHealth.reason}`).catch(() => {})
   }
 
-  // Poll emails and notify Eric with human-readable summaries
-  startPolling(async (email) => {
-    try {
-      const sender = email.from.split('<')[0].trim() || email.from
-      await sendToOwner(
-        `📩 *${sender}*\n[${email.accountLabel}] ${email.subject}`,
-        { parse_mode: 'Markdown' }
-      )
-    } catch (err) {
-      console.error('[poll] Failed to notify new email:', err.message)
-    }
-  }, 5 * 60 * 1000)
+  // Poll silently — emails available when Eric asks
+  startPolling(() => {}, 5 * 60 * 1000)
 }
 
 start().catch(err => {
