@@ -80,8 +80,12 @@ async function sendEmail(account, { to, subject, body, cc, bcc, inReplyTo, refer
     host: account.smtpHost,
     port: account.smtpPort,
     secure: account.smtpPort === 465,
-    auth: { user: account.user, pass: account.pass }
+    requireTLS: account.smtpPort === 587,
+    auth: { user: account.user, pass: account.pass },
+    tls: { rejectUnauthorized: true }
   })
+
+  await transporter.verify()
 
   const mailOptions = {
     from: `${account.label} <${account.user}>`,
@@ -95,7 +99,8 @@ async function sendEmail(account, { to, subject, body, cc, bcc, inReplyTo, refer
   if (inReplyTo) mailOptions.inReplyTo = inReplyTo
   if (references) mailOptions.references = Array.isArray(references) ? references.join(' ') : references
 
-  await transporter.sendMail(mailOptions)
+  const info = await transporter.sendMail(mailOptions)
+  console.log(`[email] Sent to ${to} via ${account.label} — messageId: ${info.messageId}`)
 }
 
 // Poll all accounts for new emails. Calls onNewEmail(email) for each.
