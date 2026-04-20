@@ -1,0 +1,23 @@
+{
+  "name": "atlas-agent",
+  "version": "1.0.0",
+  "description": "Atlas — AI executive assistant for Eric Cheah",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@notionhq/client": "^2.2.15",
+    "dotenv": "^16.4.5",
+    "imapflow": "^1.0.162",
+    "mailparser": "^3.7.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.13",
+    "telegraf": "^4.16.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
