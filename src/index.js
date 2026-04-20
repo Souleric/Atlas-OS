@@ -2,6 +2,7 @@ require('dotenv').config()
 
 const cron = require('node-cron')
 const { bot, sendToOwner } = require('./bot')
+const { checkMemoryHealth } = require('./memory')
 const { startPolling } = require('./email')
 const { handleNewEmail } = require('./handlers/email')
 const { handleMessage } = require('./handlers/chat')
@@ -97,7 +98,12 @@ async function start() {
   await new Promise(resolve => setTimeout(resolve, 8000))
 
   console.log('[atlas] Bot running. Atlas is online.')
-  await sendToOwner('Atlas is online. How can I help you today?').catch(() => {})
+  const memHealth = await checkMemoryHealth()
+  if (memHealth.ok) {
+    await sendToOwner('Atlas is online. Memory connected.').catch(() => {})
+  } else {
+    await sendToOwner(`Atlas is online. ⚠️ Memory offline: ${memHealth.reason}`).catch(() => {})
+  }
 
   // Poll emails silently in background — store for when Eric asks
   startPolling(() => {}, 5 * 60 * 1000)
