@@ -6,7 +6,7 @@ const { checkMemoryHealth } = require('./memory')
 const { startPolling } = require('./email')
 const { handleMessage } = require('./handlers/chat')
 const { getActiveProjects } = require('./notion')
-const { generateBriefing, triageEmail } = require('./ai')
+const { generateBriefing } = require('./ai')
 const { checkNow } = require('./email')
 
 // Validate required env vars on startup
@@ -107,11 +107,9 @@ async function start() {
   // Poll emails and notify Eric with human-readable summaries
   startPolling(async (email) => {
     try {
-      const triage = await triageEmail(email)
-      const priority = triage.priority === 'high' ? '🔴' : triage.priority === 'medium' ? '🟡' : '⚪'
-      const replyNote = triage.requiresReply ? '\n_Reply suggested_' : ''
+      const sender = email.from.split('<')[0].trim() || email.from
       await sendToOwner(
-        `${priority} *New email*\nFrom: ${email.from}\nAccount: ${email.accountLabel}\nSubject: ${email.subject}\n\n${triage.summary}\n\nAction: ${triage.suggestedAction}${replyNote}`,
+        `📩 *${sender}*\n[${email.accountLabel}] ${email.subject}`,
         { parse_mode: 'Markdown' }
       )
     } catch (err) {

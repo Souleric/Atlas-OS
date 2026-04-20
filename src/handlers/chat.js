@@ -72,7 +72,6 @@ async function handleMessage(ctx) {
   console.log(`[chat] parsed intent: ${intent.intent}`)
 
   if (intent.intent === 'get_projects') return handleGetProjects(ctx)
-  if (intent.intent === 'check_emails') return fetchAndSummarise(ctx)
   if (intent.intent === 'summarize') {
     await ctx.reply('Generating briefing...')
     const [projects, emails] = await Promise.all([getActiveProjects(), checkNow()])
