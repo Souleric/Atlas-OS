@@ -86,6 +86,7 @@ async function draftReplyForEmail(ctx, index) {
 async function handleApprovalReply(ctx, text) {
   const userId = ctx.from.id
   const pending = await getPending(userId)
+  console.log(`[approval] userId=${userId} text="${text}" pending=${pending ? pending.type : 'none'}`)
   if (!pending) return false
 
   const normalized = text.trim().toLowerCase()
@@ -93,6 +94,7 @@ async function handleApprovalReply(ctx, text) {
   if (pending.type === 'email_reply') {
     if (normalized === 'yes' || normalized === 'send' || normalized.startsWith('yes ') || normalized === 'yes send') {
       const account = getAccountById(pending.emailData.accountId)
+      console.log(`[approval] email_reply → sending to=${pending.emailData.from} account=${account?.id || 'NOT FOUND'}`)
       if (!account) {
         await ctx.reply('Account not found. Cannot send.')
         await clearPending(userId)
@@ -183,12 +185,14 @@ async function handleApprovalReply(ctx, text) {
     if (normalized === 'yes' || normalized === 'send' || normalized.startsWith('yes ') || normalized === 'yes send') {
       const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
       const account = accounts.find(a => a.id === pending.emailData.accountId) || accounts[0]
+      console.log(`[approval] email_compose → to=${pending.emailData.from} account=${account?.id || 'NOT FOUND'} accountId=${pending.emailData.accountId}`)
       if (!account) {
         await ctx.reply('No email account configured.')
         await clearPending(userId)
         return true
       }
       try {
+        console.log(`[approval] calling sendEmail to=${pending.emailData.from}`)
         await sendEmail(account, {
           to: pending.emailData.from,
           subject: pending.emailData.subject,
@@ -196,9 +200,11 @@ async function handleApprovalReply(ctx, text) {
           cc: pending.cc || null,
           bcc: pending.bcc || null
         })
+        console.log(`[approval] sendEmail succeeded`)
         await ctx.reply('Sent.')
         await clearPending(userId)
       } catch (err) {
+        console.error(`[approval] sendEmail failed: ${err.message}`)
         await ctx.reply(`Failed to send: ${err.message}`)
       }
       return true
@@ -277,6 +283,7 @@ async function handleApprovalReply(ctx, text) {
 
 // Compose a new email from scratch
 async function composeNewEmail(ctx, to, brief) {
+  console.log(`[compose] to="${to}" brief="${brief}"`)
   await ctx.reply('Drafting...')
 
   // If 'to' is a name (no @), look up email in Notion contacts
