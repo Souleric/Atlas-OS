@@ -265,4 +265,45 @@ JSON structure:
   }
 }
 
-module.exports = { triageEmail, draftEmailReply, chat, generateBriefing, parseIntent, parseProjectUpdate }
+// Sonnet — compose a new email from scratch
+async function composeEmail(to, brief, clientContext = null) {
+  const contextBlock = clientContext
+    ? `\n\nContact context from Notion:\n${clientContext}`
+    : ''
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1024,
+    system: [
+      {
+        type: 'text',
+        text: SYSTEM_PROMPT,
+        cache_control: { type: 'ephemeral' }
+      }
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: `Compose a new email on Eric's behalf.${contextBlock}
+
+To: ${to}
+Brief: ${brief}
+
+Write the subject line and body separated by a newline like this:
+SUBJECT: <subject here>
+
+<body here>
+
+Sign off as Eric Cheah. Match his tone — direct, confident, professional.`
+      }
+    ]
+  })
+
+  const text = response.content[0].text.trim()
+  const subjectMatch = text.match(/^SUBJECT:\s*(.+)/m)
+  const subject = subjectMatch ? subjectMatch[1].trim() : 'Follow-up'
+  const body = text.replace(/^SUBJECT:.+\n*/m, '').trim()
+  return { subject, body }
+}
+
+module.exports = { triageEmail, draftEmailReply, composeEmail, chat, generateBriefing, parseIntent, parseProjectUpdate }

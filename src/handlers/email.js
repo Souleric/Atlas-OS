@@ -1,6 +1,6 @@
 const { sendApproval, getPending, clearPending, OWNER_ID } = require('../bot')
 const { sendEmail, getAccountById, checkNow } = require('../email')
-const { triageEmail, draftEmailReply } = require('../ai')
+const { triageEmail, draftEmailReply, composeEmail } = require('../ai')
 const { searchContacts } = require('../notion')
 
 // In-memory store of last fetched emails — keyed by index (1-based)
@@ -146,6 +146,76 @@ async function handleApprovalReply(ctx, text) {
     }
   }
 
+  if (pending.type === 'email_compose') {
+    if (normalized === 'yes' || normalized === 'send') {
+      const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
+      const account = accounts.find(a => a.id === pending.emailData.accountId) || accounts[0]
+      if (!account) {
+        await ctx.reply('No email account configured.')
+        clearPending(userId)
+        return true
+      }
+      try {
+        await sendEmail(account, {
+          to: pending.emailData.from,
+          subject: pending.emailData.subject,
+          body: pending.draft,
+          cc: pending.cc || null,
+          bcc: pending.bcc || null
+        })
+        await ctx.reply('Sent.')
+        clearPending(userId)
+      } catch (err) {
+        await ctx.reply(`Failed to send: ${err.message}`)
+      }
+      return true
+    }
+
+    if (normalized === 'skip' || normalized === 'cancel' || normalized === 'no') {
+      await ctx.reply('Skipped.')
+      clearPending(userId)
+      return true
+    }
+
+    if (normalized.startsWith('edit ')) {
+      pending.draft = text.slice(5).trim()
+      await ctx.reply(`Updated:\n\`\`\`\n${pending.draft}\n\`\`\`\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
+      return true
+    }
+
+    if (normalized.startsWith('subject ')) {
+      pending.emailData.subject = text.slice(8).trim()
+      await ctx.reply(`Subject updated to: ${pending.emailData.subject}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
+      return true
+    }
+
+    if (normalized.startsWith('cc ')) {
+      pending.cc = text.slice(3).trim()
+      await ctx.reply(`CC set to: ${pending.cc}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
+      return true
+    }
+
+    if (normalized.startsWith('bcc ')) {
+      pending.bcc = text.slice(4).trim()
+      await ctx.reply(`BCC set to: ${pending.bcc}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
+      return true
+    }
+
+    if (normalized.startsWith('from ')) {
+      const accountId = text.slice(5).trim().toLowerCase()
+      const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
+      const account = accounts.find(a => a.id === accountId || a.label.toLowerCase() === accountId)
+      if (!account) {
+        await ctx.reply(`Account "${accountId}" not found. Available: ${accounts.map(a => a.id).join(', ')}`)
+      } else {
+        pending.emailData.accountId = account.id
+        pending.emailData.accountLabel = account.label
+        await ctx.reply(`Sending from: ${account.label}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
+      }
+      return true
+    }
+  }
+
   if (pending.type === 'notion_update') {
     if (normalized === 'yes') {
       try {
@@ -167,4 +237,34 @@ async function handleApprovalReply(ctx, text) {
   return false
 }
 
-module.exports = { fetchAndSummarise, showEmailDetails, draftReplyForEmail, handleApprovalReply }
+// Compose a new email from scratch
+async function composeNewEmail(ctx, to, brief) {
+  await ctx.reply('Drafting...')
+
+  const recipientName = to.split('@')[0]
+  const clientContext = await searchContacts(recipientName).catch(() => null)
+  const contextText = clientContext
+    ? `Contact: ${clientContext.name}, Company: ${clientContext.company || 'unknown'}`
+    : null
+
+  const { subject, body } = await composeEmail(to, brief, contextText)
+
+  // Default to first account (gmail) — Eric can override with FROM command
+  const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
+  const defaultAccount = accounts[0]
+
+  await sendApproval(OWNER_ID, {
+    type: 'email_compose',
+    emailData: {
+      from: to,
+      subject,
+      accountId: defaultAccount?.id,
+      accountLabel: defaultAccount?.label || 'Gmail',
+      messageId: null,
+      references: null
+    },
+    draft: body
+  })
+}
+
+module.exports = { fetchAndSummarise, showEmailDetails, draftReplyForEmail, composeNewEmail, handleApprovalReply }

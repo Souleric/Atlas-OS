@@ -3,7 +3,7 @@ const { chat, generateBriefing } = require('../ai')
 const { getActiveProjects } = require('../notion')
 const { checkNow } = require('../email')
 const { handleGetProjects, handleUpdateProject, handleAddNote, handleProgressUpdate } = require('./notion')
-const { fetchAndSummarise, showEmailDetails, draftReplyForEmail, handleApprovalReply } = require('./email')
+const { fetchAndSummarise, showEmailDetails, draftReplyForEmail, composeNewEmail, handleApprovalReply } = require('./email')
 
 async function handleMessage(ctx) {
   const userId = ctx.from.id
@@ -31,6 +31,12 @@ async function handleMessage(ctx) {
   const replyMatch = lower.match(/(?:reply\s+to|draft\s+reply(?:\s+for)?|draft\s+(?:a\s+)?reply\s+(?:to|for))\s+(\d+)/)
   if (replyMatch) {
     return draftReplyForEmail(ctx, parseInt(replyMatch[1]))
+  }
+
+  // "email to john@example.com about X" or "send email to X: brief"
+  const composeMatch = text.match(/(?:send\s+)?email\s+to\s+([\w.+-]+@[\w.-]+)\s+(?:about|re:|re\s+|:\s*)(.+)/i)
+  if (composeMatch) {
+    return composeNewEmail(ctx, composeMatch[1].trim(), composeMatch[2].trim())
   }
 
   // --- Project commands ---
