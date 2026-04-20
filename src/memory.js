@@ -20,6 +20,7 @@ async function getHistory(userId) {
     return []
   }
 
+  console.log(`[memory] loaded ${data.length} rows for user ${userId}`)
   return data.reverse() // oldest first for Claude context
 }
 

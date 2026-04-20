@@ -69,6 +69,7 @@ async function handleMessage(ctx) {
 
   // --- General chat (Haiku) ---
   const history = await getHistory(userId)
+  console.log(`[chat] sending ${history.length} history messages to Claude for user ${userId}`)
   const reply = await chat(text, history)
   await Promise.all([
     appendHistory(userId, 'user', text),
