@@ -82,6 +82,10 @@ async function start() {
     process.exit(1)
   }
 
+  // Drop any existing webhook/polling session before starting
+  await bot.telegram.deleteWebhook({ drop_pending_updates: false }).catch(() => {})
+  await new Promise(r => setTimeout(r, 2000))
+
   // bot.launch() runs the polling loop indefinitely — do not await it
   bot.launch().catch(err => {
     console.error('[atlas] Bot crashed:', err.message)
