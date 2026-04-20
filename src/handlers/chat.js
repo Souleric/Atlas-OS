@@ -1,4 +1,4 @@
-const { getChatHistory, addToHistory } = require('../bot')
+const { getHistory, appendHistory } = require('../memory')
 const { chat, generateBriefing } = require('../ai')
 const { getActiveProjects } = require('../notion')
 const { checkNow } = require('../email')
@@ -62,10 +62,12 @@ async function handleMessage(ctx) {
   }
 
   // --- General chat (Haiku) ---
-  const history = getChatHistory(userId)
-  addToHistory(userId, 'user', text)
+  const history = await getHistory(userId)
   const reply = await chat(text, history)
-  addToHistory(userId, 'assistant', reply)
+  await Promise.all([
+    appendHistory(userId, 'user', text),
+    appendHistory(userId, 'assistant', reply)
+  ])
   await ctx.reply(reply)
 }
 

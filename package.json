@@ -10,6 +10,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@notionhq/client": "^2.2.15",
+    "@supabase/supabase-js": "^2.103.3",
     "dotenv": "^16.4.5",
     "imapflow": "^1.0.162",
     "mailparser": "^3.7.1",
