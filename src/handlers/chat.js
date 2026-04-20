@@ -33,8 +33,8 @@ async function handleMessage(ctx) {
     return draftReplyForEmail(ctx, parseInt(replyMatch[1]))
   }
 
-  // "email to john@example.com about X" or "send email to X: brief"
-  const composeMatch = text.match(/(?:send\s+)?email\s+to\s+([\w.+-]+@[\w.-]+)\s+(?:about|re:|re\s+|:\s*)(.+)/i)
+  // "email to john@example.com about X" or "send email to Kai about X"
+  const composeMatch = text.match(/(?:send\s+)?email\s+to\s+(.+?)\s+(?:about|re:|re\s+|regarding|:\s*)(.+)/i)
   if (composeMatch) {
     return composeNewEmail(ctx, composeMatch[1].trim(), composeMatch[2].trim())
   }

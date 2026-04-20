@@ -270,13 +270,22 @@ async function handleApprovalReply(ctx, text) {
 async function composeNewEmail(ctx, to, brief) {
   await ctx.reply('Drafting...')
 
-  const recipientName = to.split('@')[0]
-  const clientContext = await searchContacts(recipientName).catch(() => null)
-  const contextText = clientContext
-    ? `Contact: ${clientContext.name}, Company: ${clientContext.company || 'unknown'}`
-    : null
+  // If 'to' is a name (no @), look up email in Notion contacts
+  let resolvedTo = to
+  let contextText = null
+  if (!to.includes('@')) {
+    const contact = await searchContacts(to).catch(() => null)
+    if (contact) {
+      if (contact.email) resolvedTo = contact.email
+      contextText = `Contact: ${contact.name}, Company: ${contact.company || 'unknown'}, Email: ${contact.email || 'unknown'}`
+    }
+  } else {
+    const recipientName = to.split('@')[0]
+    const contact = await searchContacts(recipientName).catch(() => null)
+    if (contact) contextText = `Contact: ${contact.name}, Company: ${contact.company || 'unknown'}`
+  }
 
-  const { subject, body } = await composeEmail(to, brief, contextText)
+  const { subject, body } = await composeEmail(resolvedTo, brief, contextText)
 
   const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
   const accountList = accounts.map((a, i) => `*${i + 1}.* ${a.label} (${a.user})`).join('\n')
@@ -284,7 +293,7 @@ async function composeNewEmail(ctx, to, brief) {
   await sendApproval(OWNER_ID, {
     type: 'email_compose',
     emailData: {
-      from: to,
+      from: resolvedTo,
       subject,
       accountId: null,
       accountLabel: null,
