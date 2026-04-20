@@ -1,6 +1,6 @@
 const { ImapFlow } = require('imapflow')
 const { simpleParser } = require('mailparser')
-const nodemailer = require('nodemailer')
+const { Resend } = require('resend')
 
 // Load accounts from env: JSON array of account configs
 function loadAccounts() {
@@ -76,31 +76,30 @@ async function fetchNewEmails(account) {
 }
 
 async function sendEmail(account, { to, subject, body, cc, bcc, inReplyTo, references }) {
-  const transporter = nodemailer.createTransport({
-    host: account.smtpHost,
-    port: account.smtpPort,
-    secure: account.smtpPort === 465,
-    requireTLS: account.smtpPort === 587,
-    auth: { user: account.user, pass: account.pass },
-    tls: { rejectUnauthorized: true }
-  })
+  const resend = new Resend(process.env.RESEND_API_KEY)
 
-  await transporter.verify()
-
-  const mailOptions = {
-    from: `${account.label} <${account.user}>`,
-    to,
+  // RESEND_FROM must be a verified domain address (e.g. atlas@betasocial.my)
+  // If account.user differs (e.g. gmail), set reply_to so replies go to the right inbox
+  const fromAddress = process.env.RESEND_FROM || account.user
+  const payload = {
+    from: `${account.label} <${fromAddress}>`,
+    to: [to],
     subject,
     text: body
   }
 
-  if (cc) mailOptions.cc = cc
-  if (bcc) mailOptions.bcc = bcc
-  if (inReplyTo) mailOptions.inReplyTo = inReplyTo
-  if (references) mailOptions.references = Array.isArray(references) ? references.join(' ') : references
+  if (account.user !== fromAddress) payload.reply_to = account.user
+  if (cc) payload.cc = [cc]
+  if (bcc) payload.bcc = [bcc]
 
-  const info = await transporter.sendMail(mailOptions)
-  console.log(`[email] Sent to ${to} via ${account.label} — messageId: ${info.messageId}`)
+  const headers = {}
+  if (inReplyTo) headers['In-Reply-To'] = inReplyTo
+  if (references) headers['References'] = Array.isArray(references) ? references.join(' ') : references
+  if (Object.keys(headers).length) payload.headers = headers
+
+  const { data, error } = await resend.emails.send(payload)
+  if (error) throw new Error(error.message)
+  console.log(`[email] Sent to ${to} via Resend (${account.label}) — id: ${data.id}`)
 }
 
 // Poll all accounts for new emails. Calls onNewEmail(email) for each.
