@@ -20,8 +20,12 @@ async function getHistory(userId) {
     return []
   }
 
-  console.log(`[memory] loaded ${data.length} rows for user ${userId}`)
-  return data.reverse() // oldest first for Claude context
+  const ordered = data.reverse()
+  // Anthropic requires messages to start with 'user' — trim leading assistant messages
+  const firstUser = ordered.findIndex(m => m.role === 'user')
+  const trimmed = firstUser > 0 ? ordered.slice(firstUser) : ordered
+  console.log(`[memory] loaded ${trimmed.length} rows for user ${userId}`)
+  return trimmed // oldest first for Claude context
 }
 
 async function appendHistory(userId, role, content) {

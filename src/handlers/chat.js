@@ -71,10 +71,8 @@ async function handleMessage(ctx) {
   const history = await getHistory(userId)
   console.log(`[chat] sending ${history.length} history messages to Claude for user ${userId}`)
   const reply = await chat(text, history)
-  await Promise.all([
-    appendHistory(userId, 'user', text),
-    appendHistory(userId, 'assistant', reply)
-  ])
+  await appendHistory(userId, 'user', text)
+  await appendHistory(userId, 'assistant', reply)
   await ctx.reply(reply)
 }
 
