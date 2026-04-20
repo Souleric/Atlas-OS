@@ -4,10 +4,9 @@ const cron = require('node-cron')
 const { bot, sendToOwner } = require('./bot')
 const { checkMemoryHealth } = require('./memory')
 const { startPolling } = require('./email')
-const { handleNewEmail } = require('./handlers/email')
 const { handleMessage } = require('./handlers/chat')
 const { getActiveProjects } = require('./notion')
-const { generateBriefing } = require('./ai')
+const { generateBriefing, triageEmail } = require('./ai')
 const { checkNow } = require('./email')
 
 // Validate required env vars on startup
@@ -105,8 +104,20 @@ async function start() {
     await sendToOwner(`Atlas is online. ⚠️ Memory offline: ${memHealth.reason}`).catch(() => {})
   }
 
-  // Poll emails silently in background — store for when Eric asks
-  startPolling(() => {}, 5 * 60 * 1000)
+  // Poll emails and notify Eric with human-readable summaries
+  startPolling(async (email) => {
+    try {
+      const triage = await triageEmail(email)
+      const priority = triage.priority === 'high' ? '🔴' : triage.priority === 'medium' ? '🟡' : '⚪'
+      const replyNote = triage.requiresReply ? '\n_Reply suggested_' : ''
+      await sendToOwner(
+        `${priority} *New email*\nFrom: ${email.from}\nAccount: ${email.accountLabel}\nSubject: ${email.subject}\n\n${triage.summary}\n\nAction: ${triage.suggestedAction}${replyNote}`,
+        { parse_mode: 'Markdown' }
+      )
+    } catch (err) {
+      console.error('[poll] Failed to notify new email:', err.message)
+    }
+  }, 5 * 60 * 1000)
 }
 
 start().catch(err => {
