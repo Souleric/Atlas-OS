@@ -92,11 +92,11 @@ async function start() {
     process.exit(1)
   })
 
-  // Give polling loop a moment to initialise
-  await new Promise(resolve => setTimeout(resolve, 1500))
+  // Wait long enough for a 409 conflict crash to surface before declaring stable.
+  // If the process exits in this window, the startup message is never sent.
+  await new Promise(resolve => setTimeout(resolve, 8000))
 
   console.log('[atlas] Bot running. Atlas is online.')
-
   await sendToOwner('Atlas is online. How can I help you today?').catch(() => {})
 
   // Poll emails silently in background — store for when Eric asks
