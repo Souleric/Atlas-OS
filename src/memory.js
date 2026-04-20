@@ -30,9 +30,20 @@ async function getHistory(userId) {
   }
 
   const ordered = data.reverse()
-  // Anthropic requires messages to start with 'user' — trim leading assistant messages
-  const firstUser = ordered.findIndex(m => m.role === 'user')
-  const trimmed = firstUser > 0 ? ordered.slice(firstUser) : ordered
+
+  // Merge consecutive same-role messages (Anthropic requires strictly alternating roles)
+  const merged = []
+  for (const msg of ordered) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      merged[merged.length - 1].content += '\n' + msg.content
+    } else {
+      merged.push({ role: msg.role, content: msg.content })
+    }
+  }
+
+  // Anthropic requires messages to start with 'user'
+  const firstUser = merged.findIndex(m => m.role === 'user')
+  const trimmed = firstUser > 0 ? merged.slice(firstUser) : merged
   console.log(`[memory] loaded ${trimmed.length} rows for user ${userId}`)
   return trimmed
 }
