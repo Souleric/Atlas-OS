@@ -248,6 +248,9 @@ Message: "${text}"
 
 Possible intents: check_emails | update_project | get_projects | add_note | summarize | draft_reply | general_chat
 
+Use get_projects for: any question about projects, Notion, project status, what Eric is working on, or whether Notion is connected.
+Use check_emails for: any question about emails, inbox, or whether email is connected.
+
 JSON structure:
 {
   "intent": "one of the above",

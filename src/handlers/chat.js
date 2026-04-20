@@ -1,5 +1,5 @@
 const { getHistory, appendHistory } = require('../memory')
-const { chat, generateBriefing } = require('../ai')
+const { chat, generateBriefing, parseIntent } = require('../ai')
 const { getActiveProjects } = require('../notion')
 const { checkNow } = require('../email')
 const { handleGetProjects, handleUpdateProject, handleAddNote, handleProgressUpdate } = require('./notion')
@@ -67,7 +67,21 @@ async function handleMessage(ctx) {
     return ctx.reply(summary)
   }
 
-  // --- General chat (Haiku) ---
+  // --- Intent routing fallback ---
+  const intent = await parseIntent(text)
+  console.log(`[chat] parsed intent: ${intent.intent}`)
+
+  if (intent.intent === 'get_projects') return handleGetProjects(ctx)
+  if (intent.intent === 'check_emails') return fetchAndSummarise(ctx)
+  if (intent.intent === 'summarize') {
+    await ctx.reply('Generating briefing...')
+    const [projects, emails] = await Promise.all([getActiveProjects(), checkNow()])
+    const summary = await generateBriefing(projects, emails, 'morning')
+    return ctx.reply(summary)
+  }
+  if (intent.intent === 'update_project' && intent.projectName) return handleProgressUpdate(ctx, text)
+
+  // --- General chat ---
   const history = await getHistory(userId)
   console.log(`[chat] sending ${history.length} history messages to Claude for user ${userId}`)
   const reply = await chat(text, history)
