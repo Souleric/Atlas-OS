@@ -14,6 +14,12 @@ async function handleMessage(ctx) {
   const wasApproval = await handleApprovalReply(ctx, text)
   if (wasApproval) return
 
+  // If replying to a specific Atlas message, prepend that context
+  const replyContext = ctx.message.reply_to_message?.text
+  const fullText = replyContext
+    ? `[Replying to: "${replyContext.slice(0, 200)}"]\n${text}`
+    : text
+
   const lower = text.toLowerCase()
 
   // --- Email commands ---
@@ -68,7 +74,7 @@ async function handleMessage(ctx) {
   }
 
   // --- Intent routing fallback ---
-  const intent = await parseIntent(text)
+  const intent = await parseIntent(fullText)
   console.log(`[chat] parsed intent: ${intent.intent}`)
 
   if (intent.intent === 'get_projects') return handleGetProjects(ctx)
@@ -83,7 +89,7 @@ async function handleMessage(ctx) {
   // --- General chat ---
   const history = await getHistory(userId)
   console.log(`[chat] sending ${history.length} history messages to Claude for user ${userId}`)
-  const reply = await chat(text, history)
+  const reply = await chat(fullText, history)
   await appendHistory(userId, 'user', text)
   await appendHistory(userId, 'assistant', reply)
   await ctx.reply(reply)
