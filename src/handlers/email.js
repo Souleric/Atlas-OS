@@ -91,7 +91,7 @@ async function handleApprovalReply(ctx, text) {
   const normalized = text.trim().toLowerCase()
 
   if (pending.type === 'email_reply') {
-    if (normalized === 'yes' || normalized === 'send') {
+    if (normalized === 'yes' || normalized === 'send' || normalized.startsWith('yes ') || normalized === 'yes send') {
       const account = getAccountById(pending.emailData.accountId)
       if (!account) {
         await ctx.reply('Account not found. Cannot send.')
@@ -176,7 +176,7 @@ async function handleApprovalReply(ctx, text) {
       return true
     }
 
-    if (normalized === 'yes' || normalized === 'send') {
+    if (normalized === 'yes' || normalized === 'send' || normalized.startsWith('yes ') || normalized === 'yes send') {
       const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
       const account = accounts.find(a => a.id === pending.emailData.accountId) || accounts[0]
       if (!account) {
