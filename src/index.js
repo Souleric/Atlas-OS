@@ -97,13 +97,7 @@ async function start() {
 
   console.log('[atlas] Bot running. Atlas is online.')
 
-  // Non-fatal startup message — retry once on transient error
-  try {
-    await sendToOwner('Atlas is online. How can I help you today?')
-  } catch {
-    await new Promise(r => setTimeout(r, 3000))
-    await sendToOwner('Atlas is online. How can I help you today?').catch(() => {})
-  }
+  await sendToOwner('Atlas is online. How can I help you today?').catch(() => {})
 
   // Poll emails silently in background — store for when Eric asks
   startPolling(() => {}, 5 * 60 * 1000)
