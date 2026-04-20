@@ -57,4 +57,29 @@ async function appendHistory(userId, role, content) {
   }
 }
 
-module.exports = { getHistory, appendHistory, checkMemoryHealth }
+async function setPendingApproval(userId, action) {
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  const { error } = await supabase.from('pending_approvals')
+    .upsert({ user_id: userId, action, expires_at: expiresAt })
+  if (error) console.error('[memory] setPendingApproval error:', error.message)
+}
+
+async function getPendingApproval(userId) {
+  const { data, error } = await supabase.from('pending_approvals')
+    .select('action, expires_at')
+    .eq('user_id', userId)
+    .single()
+  if (error || !data) return null
+  if (new Date(data.expires_at) < new Date()) {
+    await clearPendingApproval(userId)
+    return null
+  }
+  return data.action
+}
+
+async function clearPendingApproval(userId) {
+  const { error } = await supabase.from('pending_approvals').delete().eq('user_id', userId)
+  if (error) console.error('[memory] clearPendingApproval error:', error.message)
+}
+
+module.exports = { getHistory, appendHistory, checkMemoryHealth, setPendingApproval, getPendingApproval, clearPendingApproval }

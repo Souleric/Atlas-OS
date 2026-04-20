@@ -1,4 +1,4 @@
-const { sendApproval, getPending, clearPending, escapeMarkdown, OWNER_ID } = require('../bot')
+const { sendApproval, getPending, setPending, clearPending, escapeMarkdown, OWNER_ID } = require('../bot')
 const { sendEmail, getAccountById, checkNow } = require('../email')
 const { triageEmail, draftEmailReply, composeEmail } = require('../ai')
 const { searchContacts } = require('../notion')
@@ -85,7 +85,7 @@ async function draftReplyForEmail(ctx, index) {
 // Called when Eric replies to an approval prompt
 async function handleApprovalReply(ctx, text) {
   const userId = ctx.from.id
-  const pending = getPending(userId)
+  const pending = await getPending(userId)
   if (!pending) return false
 
   const normalized = text.trim().toLowerCase()
@@ -95,7 +95,7 @@ async function handleApprovalReply(ctx, text) {
       const account = getAccountById(pending.emailData.accountId)
       if (!account) {
         await ctx.reply('Account not found. Cannot send.')
-        clearPending(userId)
+        await clearPending(userId)
         return true
       }
       try {
@@ -111,7 +111,7 @@ async function handleApprovalReply(ctx, text) {
           references: pending.emailData.references
         })
         await ctx.reply('Sent.')
-        clearPending(userId)
+        await clearPending(userId)
       } catch (err) {
         await ctx.reply(`Failed to send: ${err.message}`)
       }
@@ -120,12 +120,13 @@ async function handleApprovalReply(ctx, text) {
 
     if (normalized === 'skip' || normalized === 'cancel' || normalized === 'no') {
       await ctx.reply('Skipped.')
-      clearPending(userId)
+      await clearPending(userId)
       return true
     }
 
     if (normalized.startsWith('edit ')) {
       pending.draft = text.slice(5).trim()
+      await setPending(userId, pending)
       await ctx.reply(
         `Updated:\n\`\`\`\n${pending.draft}\n\`\`\`\n\n*YES* to send · *SKIP* to discard`,
         { parse_mode: 'Markdown' }
@@ -135,12 +136,14 @@ async function handleApprovalReply(ctx, text) {
 
     if (normalized.startsWith('cc ')) {
       pending.cc = text.slice(3).trim()
+      await setPending(userId, pending)
       await ctx.reply(`CC set to: ${pending.cc}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       return true
     }
 
     if (normalized.startsWith('bcc ')) {
       pending.bcc = text.slice(4).trim()
+      await setPending(userId, pending)
       await ctx.reply(`BCC set to: ${pending.bcc}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       return true
     }
@@ -160,6 +163,7 @@ async function handleApprovalReply(ctx, text) {
       pending.emailData.accountId = account.id
       pending.emailData.accountLabel = account.label
       pending.awaitingAccount = false
+      await setPending(userId, pending)
 
       const { emailData, draft, cc, bcc } = pending
       const ccLine = cc ? `\nCC: ${escapeMarkdown(cc)}` : ''
@@ -181,7 +185,7 @@ async function handleApprovalReply(ctx, text) {
       const account = accounts.find(a => a.id === pending.emailData.accountId) || accounts[0]
       if (!account) {
         await ctx.reply('No email account configured.')
-        clearPending(userId)
+        await clearPending(userId)
         return true
       }
       try {
@@ -193,7 +197,7 @@ async function handleApprovalReply(ctx, text) {
           bcc: pending.bcc || null
         })
         await ctx.reply('Sent.')
-        clearPending(userId)
+        await clearPending(userId)
       } catch (err) {
         await ctx.reply(`Failed to send: ${err.message}`)
       }
@@ -202,30 +206,34 @@ async function handleApprovalReply(ctx, text) {
 
     if (normalized === 'skip' || normalized === 'cancel' || normalized === 'no') {
       await ctx.reply('Skipped.')
-      clearPending(userId)
+      await clearPending(userId)
       return true
     }
 
     if (normalized.startsWith('edit ')) {
       pending.draft = text.slice(5).trim()
+      await setPending(userId, pending)
       await ctx.reply(`Updated:\n\`\`\`\n${pending.draft}\n\`\`\`\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       return true
     }
 
     if (normalized.startsWith('subject ')) {
       pending.emailData.subject = text.slice(8).trim()
+      await setPending(userId, pending)
       await ctx.reply(`Subject updated to: ${pending.emailData.subject}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       return true
     }
 
     if (normalized.startsWith('cc ')) {
       pending.cc = text.slice(3).trim()
+      await setPending(userId, pending)
       await ctx.reply(`CC set to: ${pending.cc}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       return true
     }
 
     if (normalized.startsWith('bcc ')) {
       pending.bcc = text.slice(4).trim()
+      await setPending(userId, pending)
       await ctx.reply(`BCC set to: ${pending.bcc}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       return true
     }
@@ -239,6 +247,7 @@ async function handleApprovalReply(ctx, text) {
       } else {
         pending.emailData.accountId = account.id
         pending.emailData.accountLabel = account.label
+        await setPending(userId, pending)
         await ctx.reply(`Sending from: ${account.label}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       }
       return true
@@ -253,12 +262,12 @@ async function handleApprovalReply(ctx, text) {
       } catch (err) {
         await ctx.reply(`Notion update failed: ${err.message}`)
       }
-      clearPending(userId)
+      await clearPending(userId)
       return true
     }
     if (normalized === 'no' || normalized === 'cancel') {
       await ctx.reply('Cancelled.')
-      clearPending(userId)
+      await clearPending(userId)
       return true
     }
   }

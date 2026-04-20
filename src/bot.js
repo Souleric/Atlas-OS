@@ -1,12 +1,9 @@
 const { Telegraf } = require('telegraf')
+const { setPendingApproval, getPendingApproval, clearPendingApproval } = require('./memory')
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN)
 
 const OWNER_ID = parseInt(process.env.TELEGRAM_USER_ID, 10)
-
-// Pending approvals: Map<userId, pendingAction>
-// pendingAction: { type, data, expiresAt }
-const pendingApprovals = new Map()
 
 // Conversation history per user for chat context
 const chatHistory = new Map()
@@ -25,29 +22,20 @@ function getChatHistory(userId) {
 function addToHistory(userId, role, content) {
   const history = getChatHistory(userId)
   history.push({ role, content })
-  // Keep last 20 messages (10 exchanges)
   if (history.length > 20) history.splice(0, history.length - 20)
 }
 
-function setPending(userId, action) {
-  pendingApprovals.set(userId, {
-    ...action,
-    expiresAt: Date.now() + 10 * 60 * 1000 // 10 min timeout
-  })
+// Pending approvals backed by Supabase — survive restarts
+async function setPending(userId, action) {
+  await setPendingApproval(userId, action)
 }
 
-function getPending(userId) {
-  const pending = pendingApprovals.get(userId)
-  if (!pending) return null
-  if (Date.now() > pending.expiresAt) {
-    pendingApprovals.delete(userId)
-    return null
-  }
-  return pending
+async function getPending(userId) {
+  return await getPendingApproval(userId)
 }
 
-function clearPending(userId) {
-  pendingApprovals.delete(userId)
+async function clearPending(userId) {
+  await clearPendingApproval(userId)
 }
 
 // Send a message to Eric (used by other modules)
@@ -57,7 +45,7 @@ async function sendToOwner(text, options = {}) {
 
 // Send an approval request to Eric
 async function sendApproval(userId, action) {
-  setPending(userId, action)
+  await setPending(userId, action)
 
   let message = ''
 
@@ -93,6 +81,7 @@ module.exports = {
   bot,
   sendToOwner,
   sendApproval,
+  setPending,
   getPending,
   escapeMarkdown,
   clearPending,
