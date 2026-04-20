@@ -14,6 +14,12 @@ async function handleMessage(ctx) {
   const wasApproval = await handleApprovalReply(ctx, text)
   if (wasApproval) return
 
+  // Guard: if user says yes/send but no pending exists, don't let Claude hallucinate a send
+  const lc = text.trim().toLowerCase()
+  if (lc === 'yes' || lc === 'send' || lc === 'yes send' || lc.startsWith('yes send')) {
+    return ctx.reply('No pending action. Ask me to draft the email first.')
+  }
+
   // If replying to a specific Atlas message, prepend that context
   const replyContext = ctx.message.reply_to_message?.text
   const fullText = replyContext
