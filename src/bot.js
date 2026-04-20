@@ -92,6 +92,7 @@ module.exports = {
   sendToOwner,
   sendApproval,
   getPending,
+  escapeMarkdown,
   clearPending,
   getChatHistory,
   addToHistory,

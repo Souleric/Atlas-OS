@@ -1,4 +1,4 @@
-const { sendApproval, getPending, clearPending, OWNER_ID } = require('../bot')
+const { sendApproval, getPending, clearPending, escapeMarkdown, OWNER_ID } = require('../bot')
 const { sendEmail, getAccountById, checkNow } = require('../email')
 const { triageEmail, draftEmailReply, composeEmail } = require('../ai')
 const { searchContacts } = require('../notion')
@@ -147,6 +147,35 @@ async function handleApprovalReply(ctx, text) {
   }
 
   if (pending.type === 'email_compose') {
+    // Waiting for account selection
+    if (pending.awaitingAccount) {
+      const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
+      const index = parseInt(normalized) - 1
+      const account = accounts[index]
+      if (!account) {
+        const list = accounts.map((a, i) => `*${i + 1}.* ${a.label}`).join('\n')
+        await ctx.reply(`Pick a number:\n${list}`, { parse_mode: 'Markdown' })
+        return true
+      }
+      pending.emailData.accountId = account.id
+      pending.emailData.accountLabel = account.label
+      pending.awaitingAccount = false
+
+      const { emailData, draft, cc, bcc } = pending
+      const ccLine = cc ? `\nCC: ${escapeMarkdown(cc)}` : ''
+      const bccLine = bcc ? `\nBCC: ${escapeMarkdown(bcc)}` : ''
+      await ctx.reply(
+        `📬 *Email draft*\n` +
+        `From: ${escapeMarkdown(account.label)}\n` +
+        `To: ${escapeMarkdown(emailData.from)}\n` +
+        `Subject: ${escapeMarkdown(emailData.subject)}${ccLine}${bccLine}\n\n` +
+        `\`\`\`\n${draft}\n\`\`\`\n\n` +
+        `*YES* to send · *EDIT [text]* · *SUBJECT [text]* · *CC [email]* · *BCC [email]* · *SKIP*`,
+        { parse_mode: 'Markdown' }
+      )
+      return true
+    }
+
     if (normalized === 'yes' || normalized === 'send') {
       const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
       const account = accounts.find(a => a.id === pending.emailData.accountId) || accounts[0]
@@ -249,22 +278,27 @@ async function composeNewEmail(ctx, to, brief) {
 
   const { subject, body } = await composeEmail(to, brief, contextText)
 
-  // Default to first account (gmail) — Eric can override with FROM command
   const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
-  const defaultAccount = accounts[0]
+  const accountList = accounts.map((a, i) => `*${i + 1}.* ${a.label} (${a.user})`).join('\n')
 
   await sendApproval(OWNER_ID, {
     type: 'email_compose',
     emailData: {
       from: to,
       subject,
-      accountId: defaultAccount?.id,
-      accountLabel: defaultAccount?.label || 'Gmail',
+      accountId: null,
+      accountLabel: null,
       messageId: null,
       references: null
     },
-    draft: body
+    draft: body,
+    awaitingAccount: true
   })
+
+  await ctx.reply(
+    `📬 *Draft ready — which account to send from?*\n\n${accountList}\n\nReply with the number.`,
+    { parse_mode: 'Markdown' }
+  )
 }
 
 module.exports = { fetchAndSummarise, showEmailDetails, draftReplyForEmail, composeNewEmail, handleApprovalReply }
