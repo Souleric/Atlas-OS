@@ -3,6 +3,7 @@ node_modules/
 .DS_Store
 .claude/
 .playwright-mcp/
-*.png
+whatsapp-qr.png
 .wwebjs_auth/
 .wwebjs_cache/
+.sent_dates.json

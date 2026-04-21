@@ -3,6 +3,8 @@ const { executeNotionUpdate } = require('./notion')
 const { sendEmail, getAccountById, checkNow } = require('../email')
 const { triageEmail, draftEmailReply, composeEmail } = require('../ai')
 const { searchContacts } = require('../notion')
+const { createFollowup } = require('../memory')
+const { sendToWhatsApp } = require('../whatsapp')
 
 const isSendConfirm = n => ['yes','send','ok','go','confirm'].includes(n) || n.startsWith('yes ') || n.startsWith('ok send') || n.startsWith('send it')
 
@@ -259,6 +261,52 @@ async function handleApprovalReply(ctx, text) {
         await setPending(userId, pending)
         await ctx.reply(`Sending from: ${account.label}\n\n*YES* to send · *SKIP* to discard`, { parse_mode: 'Markdown' })
       }
+      return true
+    }
+  }
+
+  if (pending.type === 'send_to_group') {
+    if (normalized === 'yes' || normalized === 'y' || normalized === 'ok' || normalized === 'send' || normalized === 'confirm') {
+      try {
+        await sendToWhatsApp(pending.groupId, pending.message)
+        await ctx.reply(`📤 Sent to *${pending.groupName}*.`, { parse_mode: 'Markdown' })
+      } catch (err) {
+        await ctx.reply(`Failed to send: ${err.message}`)
+      }
+      await clearPending(userId)
+      return true
+    }
+    if (normalized === 'no' || normalized === 'n' || normalized === 'cancel' || normalized === 'skip') {
+      await ctx.reply('Not sent.')
+      await clearPending(userId)
+      return true
+    }
+  }
+
+  if (pending.type === 'followup_create') {
+    if (normalized === 'yes' || normalized === 'y' || normalized === 'ok' || normalized === 'confirm' || normalized === 'queue') {
+      try {
+        const row = await createFollowup({
+          groupId: pending.groupId,
+          groupName: pending.groupName,
+          originalText: pending.originalText,
+          followUpText: pending.followUpText,
+          triggerAt: pending.triggerAt
+        })
+        if (!row) {
+          await ctx.reply('Could not queue follow-up (DB error).')
+        } else {
+          await ctx.reply(`Queued. I'll follow up in *${pending.groupName}* unless someone replies first.`, { parse_mode: 'Markdown' })
+        }
+      } catch (err) {
+        await ctx.reply(`Failed to queue: ${err.message}`)
+      }
+      await clearPending(userId)
+      return true
+    }
+    if (normalized === 'no' || normalized === 'cancel' || normalized === 'skip') {
+      await ctx.reply('Follow-up cancelled.')
+      await clearPending(userId)
       return true
     }
   }

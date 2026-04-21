@@ -30,6 +30,11 @@ async function fetchNewEmails(account) {
     logger: false
   })
 
+  // Prevent unhandled 'error' events from crashing the process
+  client.on('error', err => {
+    console.error(`[email] IMAP socket error (${account.label}):`, err.message)
+  })
+
   const emails = []
 
   try {

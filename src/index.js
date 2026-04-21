@@ -10,6 +10,8 @@ const { generateBriefing } = require('./ai')
 const { checkNow } = require('./email')
 const { createClient: createWhatsApp, sendToWhatsApp, getAllGroupSummaryData, clearGroupStore } = require('./whatsapp')
 const { summariseGroupChat } = require('./ai')
+const { getActiveGroupsSince, getDueFollowups, markFollowup, hasNewMessagesInGroupSince } = require('./memory')
+const { getRemindersForBriefing } = require('./reminders')
 
 // Validate required env vars on startup
 const required = [
@@ -34,11 +36,23 @@ bot.catch((err, ctx) => {
   console.error('[bot] Error:', err.message)
 })
 
+const fs = require('fs')
+const path = require('path')
 const MYT = 'Asia/Kuala_Lumpur'
-const sentDates = { morning: null, weekly: null }
+const SENT_DATES_FILE = path.join(__dirname, '../.sent_dates.json')
+
+function loadSentDates() {
+  try { return JSON.parse(fs.readFileSync(SENT_DATES_FILE, 'utf8')) } catch { return {} }
+}
+
+function saveSentDate(key, date) {
+  const data = loadSentDates()
+  data[key] = date
+  fs.writeFileSync(SENT_DATES_FILE, JSON.stringify(data))
+}
 
 function todayMYT() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: MYT }) // YYYY-MM-DD
+  return new Date().toLocaleDateString('en-CA', { timeZone: MYT })
 }
 
 function hourMYT() {
@@ -47,11 +61,15 @@ function hourMYT() {
 
 async function sendMorningBriefing() {
   const today = todayMYT()
-  if (sentDates.morning === today) return
-  sentDates.morning = today
+  if (loadSentDates().morning === today) return
+  saveSentDate('morning', today)
   try {
-    const [projects, emails] = await Promise.all([getActiveProjects(), checkNow()])
-    const briefing = await generateBriefing(projects, emails, 'morning')
+    const [projects, emails, remindersText] = await Promise.all([
+      getActiveProjects(),
+      checkNow(),
+      getRemindersForBriefing().catch(() => null)
+    ])
+    const briefing = await generateBriefing(projects, emails, 'morning', remindersText)
     await sendToOwner(`☀️ *Good morning, Eric.*\n\n${briefing}`)
     if (process.env.WHATSAPP_OWNER_ID) await sendToWhatsApp(process.env.WHATSAPP_OWNER_ID, `☀️ Good morning, Eric.\n\n${briefing}`)
   } catch (err) {
@@ -61,8 +79,8 @@ async function sendMorningBriefing() {
 
 async function sendWeeklySummary() {
   const today = todayMYT()
-  if (sentDates.weekly === today) return
-  sentDates.weekly = today
+  if (loadSentDates().weekly === today) return
+  saveSentDate('weekly', today)
   try {
     const [projects, emails] = await Promise.all([getActiveProjects(), checkNow()])
     const summary = await generateBriefing(projects, emails, 'weekly')
@@ -80,7 +98,7 @@ cron.schedule('30 8 * * 1', sendWeeklySummary, { timezone: MYT })
 
 // WhatsApp group daily summary — 5:00 PM MYT
 cron.schedule('0 17 * * *', async () => {
-  const groups = getAllGroupSummaryData()
+  const groups = await getActiveGroupsSince(24).catch(() => [])
   if (groups.length === 0) return
   console.log(`[cron] Sending WhatsApp group summaries for ${groups.length} group(s)`)
   for (const group of groups) {
@@ -93,6 +111,43 @@ cron.schedule('0 17 * * *', async () => {
   }
   clearGroupStore()
 }, { timezone: MYT })
+
+let followupPollerRunning = false
+async function tickFollowups() {
+  if (followupPollerRunning) return
+  followupPollerRunning = true
+  try {
+    const due = await getDueFollowups()
+    if (due.length > 0) console.log(`[followup] tick: ${due.length} due`)
+    for (const row of due) {
+      try {
+        const replied = await hasNewMessagesInGroupSince(row.group_id, row.created_at)
+        if (replied) {
+          console.log(`[followup] id=${row.id} cancelled — replied in ${row.group_name}`)
+          await markFollowup(row.id, { status: 'cancelled', cancelReason: 'replied' })
+          await sendToOwner(`✔ Follow-up in *${row.group_name}* skipped — someone already replied.`).catch(() => {})
+          continue
+        }
+        console.log(`[followup] id=${row.id} sending to ${row.group_name} (${row.group_id})`)
+        await sendToWhatsApp(row.group_id, row.follow_up_text)
+        await markFollowup(row.id, { status: 'sent', sentAt: new Date().toISOString() })
+        await sendToOwner(`📤 Follow-up sent in *${row.group_name}*:\n"${row.follow_up_text}"`).catch(() => {})
+      } catch (err) {
+        console.error(`[followup] tick error id=${row.id}:`, err.message)
+        await markFollowup(row.id, { status: 'failed', cancelReason: err.message }).catch(() => {})
+      }
+    }
+  } catch (err) {
+    console.error('[followup] poller error:', err.message)
+  } finally {
+    followupPollerRunning = false
+  }
+}
+
+function startFollowupPoller() {
+  console.log('[followup] Poller started (5s interval)')
+  setInterval(tickFollowups, 5000)
+}
 
 async function verifyBotConnected(retries = 5) {
   for (let i = 1; i <= retries; i++) {
@@ -151,10 +206,20 @@ async function start() {
   // Poll silently — emails available when Eric asks
   startPolling(() => {}, 5 * 60 * 1000)
 
-  // WhatsApp
+  // WhatsApp follow-up poller — fires queued follow-ups unless someone already replied
+  startFollowupPoller()
+
+  // WhatsApp — fire immediately (setTimeout was being starved)
+  console.log(`[whatsapp] env WHATSAPP_ENABLED="${process.env.WHATSAPP_ENABLED}" cwd=${process.cwd()}`)
   if (process.env.WHATSAPP_ENABLED === 'true') {
-    createWhatsApp(handleMessage)
-    console.log('[whatsapp] Initialising — check terminal for QR code')
+    console.log('[whatsapp] Initialising — QR will be sent to Telegram if needed')
+    try {
+      createWhatsApp(handleMessage, sendToOwner)
+    } catch (err) {
+      console.error('[whatsapp] createClient threw:', err.message)
+    }
+  } else {
+    console.warn('[whatsapp] Skipped: WHATSAPP_ENABLED not "true"')
   }
 }
 
@@ -163,6 +228,29 @@ start().catch(err => {
   process.exit(1)
 })
 
+// Catch errors that escape all try/catch (puppeteer, IMAP, etc.)
+const FATAL_PATTERNS = ['409', 'EFATAL', 'terminated by other getUpdates']
+process.on('uncaughtException', (err) => {
+  try {
+    const msg = err?.message || String(err)
+    console.error('[atlas] Uncaught exception:', msg)
+    if (FATAL_PATTERNS.some(p => msg.includes(p))) process.exit(1)
+  } catch {}
+})
+process.on('unhandledRejection', (reason) => {
+  try {
+    const msg = reason instanceof Error ? reason.message : String(reason)
+    console.error('[atlas] Unhandled rejection:', msg)
+    if (FATAL_PATTERNS.some(p => msg.includes(p))) process.exit(1)
+  } catch {}
+})
+process.on('exit', code => {
+  console.error(`[atlas] Process exiting with code ${code}`)
+})
+
 // Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
+process.once('SIGINT', () => { console.error('[atlas] SIGINT received'); bot.stop('SIGINT') })
+process.once('SIGTERM', () => { console.error('[atlas] SIGTERM received'); bot.stop('SIGTERM') })
+process.on('SIGHUP', () => console.error('[atlas] SIGHUP received'))
+process.on('SIGPIPE', () => console.error('[atlas] SIGPIPE received'))
+process.on('SIGABRT', () => { console.error('[atlas] SIGABRT received'); process.exit(1) })

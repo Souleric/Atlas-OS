@@ -27,12 +27,39 @@ All of the following are fully operational — never tell Eric they are not set 
 - Check project overview and status in Notion
 - Update project status, next actions, and notes in Notion
 - Generate morning briefings and weekly summaries
+- Post messages directly to WhatsApp groups Eric has added you to. Eric triggers this by saying "send this to [group]", "post this in [group]", or "send to [group]: [message]". These commands are handled by the system, not by you — never attempt to send the message yourself in chat.
+- CRITICAL: When drafting any content (summary, message, update) that Eric might forward to a group, output ONLY the content itself. Never append usage instructions, help text, footers, or phrases like "to send this to the group, say...". Those instructions are for Eric's eyes, never for the group. Your response is the message — keep it clean.
+- Schedule WhatsApp group follow-ups. Eric says "follow up in [time] on [group] saying '[text]'" and you'll send the message unless someone replies first. Same rule: the system handles it — never say you lack this capability.
 
 CRITICAL RULES — never break these:
 - Email sending is fully operational via SMTP. Never say you cannot send emails, that SMTP is not configured, or that Eric needs to contact his developer.
 - NEVER draft an email inside your chat response. Email drafting happens through the system — the draft will appear automatically as a structured approval message. Your job in chat is only to acknowledge or redirect, never to write the draft yourself.
 - If Eric asks you to send or compose an email but the structured flow hasn't triggered, tell him to use: "email to [address] about [topic]"
 - Never apologise for capabilities you have. Never say "I don't have access to X" for anything listed above.
+
+PRIVACY RULE — NEVER BREAK
+Eric's personal content is for his eyes only. This includes: morning briefings, weekly summaries, his todo/reminders list, personal email summaries, project status reports, Notion internals, and any financial or client-sensitive information.
+- Never send personal content into a group chat under any circumstances you decide on your own.
+- When responding in a context that will be forwarded to a group (group summaries, group replies), keep the response strictly about that group's conversation. Do not mix in Eric's personal items.
+- Eric may override this by explicitly asking in his DM: "send this to [group]" or "send to [group]: [message]". Those commands are handled by the system — trust that Eric has reviewed the content before confirming. You do not need to warn him; just respond to his request.
+
+GROUP CHAT CONTEXT
+Messages from group chats arrive with "[Group: ...]" and "[Sender: X]" prefixes. Use the sender field to decide your mode:
+- If the sender is Eric (or the message has no prefix at all), you are speaking to Eric directly — behave as normal.
+- If the sender is anyone else, you are speaking to a third party on Eric's behalf. In that mode:
+  - Refer to Eric in the third person ("Eric is in a meeting", "I'll let him know", "I'll pass it along")
+  - Never address the sender as "Eric"
+  - Be polite, warm, and brief — acknowledge the message, take notes, confirm you'll flag it
+  - Do not commit Eric to anything (meetings, prices, deliverables) — defer decisions back to him
+  - Do not share private details: client lists, financials, internal plans, other clients' information
+  - If they ask where Eric is or when he'll reply, keep it generic ("He'll get back to you shortly")
+
+CLARIFICATION BACKCHANNEL (groups only)
+When you're answering a third party in a group and you hit something you don't fully understand — an acronym, a person's name, a project reference, a prior commitment, a relationship, or a decision you weren't told about — do both of these in a single response:
+  1. Reply to the sender with the best group-safe answer you can. A brief acknowledgement or holding message is fine if you genuinely lack context ("Noted, I'll confirm with Eric and follow up.")
+  2. On a new line at the very end, append exactly: [ASK_ERIC] <one specific question you want Eric to answer>
+The [ASK_ERIC] line is automatically stripped before the group sees the message; Eric receives the question in a private DM on the same platform so he can teach you the context for next time.
+Only use [ASK_ERIC] when the answer would genuinely help you handle similar questions in future. Don't ask for trivia you can infer, and don't stack multiple questions — one per message.
 
 RULES
 - Be brief unless Eric asks for detail
@@ -153,7 +180,7 @@ async function chat(userMessage, history = []) {
 }
 
 // Sonnet — morning briefing and weekly summaries
-async function generateBriefing(projects, recentEmails, type = 'morning') {
+async function generateBriefing(projects, recentEmails, type = 'morning', reminders = null) {
   const emailList = recentEmails.length > 0
     ? recentEmails.map(e => `- [${e.accountLabel}] ${e.from}: ${e.subject}`).join('\n')
     : 'No new emails since last check.'
@@ -161,6 +188,10 @@ async function generateBriefing(projects, recentEmails, type = 'morning') {
   const projectList = projects.length > 0
     ? projects.map(p => `- ${p.name} (${p.status}) — ${p.nextAction || 'no next action set'}`).join('\n')
     : 'No active projects found.'
+
+  const remindersBlock = reminders
+    ? `\n\nReminders:\n${reminders}`
+    : ''
 
   const prompt = type === 'morning'
     ? `Generate Eric's morning briefing. Be concise. Format with clear sections.`
@@ -185,7 +216,7 @@ Active Projects:
 ${projectList}
 
 Recent Emails:
-${emailList}`
+${emailList}${remindersBlock}`
       }
     ]
   })
@@ -253,11 +284,19 @@ async function parseIntent(text) {
 
 Message: "${text}"
 
-Possible intents: check_emails | update_project | get_projects | add_note | summarize | draft_reply | compose_email | general_chat
+Possible intents: check_emails | update_project | get_projects | add_note | summarize | draft_reply | compose_email | check_reminders | add_reminder | complete_reminder | move_reminder | delete_reminder | general_chat
 
 Use get_projects for: any question about projects, Notion, project status, what Eric is working on, or whether Notion is connected.
 Use check_emails for: any question about emails, inbox, or whether email is connected.
 Use compose_email for: any request to write, send, draft, or compose a new email to someone.
+Use check_reminders for: any question about reminders, tasks, to-dos, what's on the list, inbox reminders, what's due today.
+Use add_reminder for: "add reminder", "remind me", "new to-do", "add to my list". Extract the reminder name and any status/priority/due mentioned.
+Use complete_reminder for: "mark X done", "X is done", "finished X", "complete X", "check off X".
+Use move_reminder for: "move X to Follow up", "put X in Schedule It", "X is scheduled", "delegate X".
+Use delete_reminder for: "delete reminder X", "remove X from my list", "cancel X".
+
+Reminder status values are: Do It | Follow up | Schedule It | Delegate It | Do It later | Done
+Priority values: High | Medium | Low
 
 JSON structure:
 {
@@ -266,7 +305,11 @@ JSON structure:
   "status": "extracted status if relevant, else null",
   "note": "extracted note text if relevant, else null",
   "to": "recipient name or email if intent is compose_email, else null",
-  "brief": "what the email is about if intent is compose_email, else null"
+  "brief": "what the email is about if intent is compose_email, else null",
+  "reminderName": "exact reminder name if the intent is add/complete/move/delete_reminder, else null",
+  "reminderStatus": "target column if relevant (one of the status values above), else null",
+  "reminderPriority": "High/Medium/Low if mentioned, else null",
+  "reminderDue": "due date in natural language if mentioned (e.g. 'tomorrow', '2026-04-25'), else null"
 }`
       }
     ]
@@ -277,7 +320,16 @@ JSON structure:
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
     return JSON.parse(text)
   } catch {
-    return { intent: 'general_chat', projectName: null, status: null, note: null }
+    return {
+      intent: 'general_chat',
+      projectName: null,
+      status: null,
+      note: null,
+      reminderName: null,
+      reminderStatus: null,
+      reminderPriority: null,
+      reminderDue: null
+    }
   }
 }
 
@@ -322,6 +374,45 @@ Sign off as Eric Cheah. Match his tone — direct, confident, professional.`
   return { subject, body }
 }
 
+// Haiku — parse a WhatsApp group follow-up request
+async function parseFollowupRequest(text, knownGroupNames = []) {
+  const groupList = knownGroupNames.length > 0
+    ? `Known WhatsApp groups Eric is in:\n${knownGroupNames.map(n => `- ${n}`).join('\n')}\n`
+    : ''
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 256,
+    messages: [{
+      role: 'user',
+      content: `Parse this follow-up request into JSON. Respond with JSON only.
+
+${groupList}
+Message: "${text}"
+
+Extract:
+- delaySeconds: how long to wait before following up. Examples: "15 min" = 900, "1 hour" = 3600, "30 minutes" = 1800, "2 hours" = 7200. Default to 900 (15 min) if not specified.
+- groupName: the group to follow up in. Match against the known groups above if possible. Return null if not specified.
+- followUpText: the exact message to send as the follow-up. Extract from quotes if present, otherwise infer something brief like "Any update?" or summarise Eric's intent.
+
+JSON structure:
+{
+  "delaySeconds": number,
+  "groupName": "matched group name or null",
+  "followUpText": "the follow-up message text"
+}`
+    }]
+  })
+
+  try {
+    let t = response.content[0].text.trim()
+    t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    return JSON.parse(t)
+  } catch {
+    return { delaySeconds: 900, groupName: null, followUpText: 'Any update?' }
+  }
+}
+
 async function summariseGroupChat(groupName, messages) {
   const transcript = messages.map(m => `[${m.time}] ${m.sender}: ${m.body}`).join('\n')
 
@@ -338,4 +429,4 @@ async function summariseGroupChat(groupName, messages) {
   return response.content[0].text.trim()
 }
 
-module.exports = { triageEmail, draftEmailReply, composeEmail, chat, generateBriefing, parseIntent, parseProjectUpdate, summariseGroupChat }
+module.exports = { triageEmail, draftEmailReply, composeEmail, chat, generateBriefing, parseIntent, parseProjectUpdate, summariseGroupChat, parseFollowupRequest }
