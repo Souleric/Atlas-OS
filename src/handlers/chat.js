@@ -2,7 +2,7 @@ const { getHistory, appendHistory } = require('../memory')
 const { chat, generateBriefing, parseIntent } = require('../ai')
 const { getActiveProjects } = require('../notion')
 const { checkNow } = require('../email')
-const { handleGetProjects, handleUpdateProject, handleAddNote, handleProgressUpdate } = require('./notion')
+const { handleGetProjects, handleUpdateProject, handleAddNote, handleProgressUpdate, handleAddProject, handleProjectCreateStep } = require('./notion')
 const { fetchAndSummarise, showEmailDetails, draftReplyForEmail, composeNewEmail, handleApprovalReply } = require('./email')
 
 async function handleMessage(ctx) {
@@ -14,9 +14,13 @@ async function handleMessage(ctx) {
   const wasApproval = await handleApprovalReply(ctx, text)
   if (wasApproval) return
 
+  // Check project creation multi-step flow
+  const wasProjectCreate = await handleProjectCreateStep(ctx, text)
+  if (wasProjectCreate) return
+
   // Guard: if user says yes/send but no pending exists, don't let Claude hallucinate a send
   const lc = text.trim().toLowerCase()
-  if (lc === 'yes' || lc === 'send' || lc === 'yes send' || lc.startsWith('yes send')) {
+  if (['yes','send','ok','go','confirm','yes send','ok send'].includes(lc) || lc.startsWith('yes ') || lc.startsWith('ok send') || lc.startsWith('send it')) {
     return ctx.reply('No pending action. Ask me to draft the email first.')
   }
 
@@ -29,7 +33,7 @@ async function handleMessage(ctx) {
   const lower = text.toLowerCase()
 
   // --- Email commands ---
-  if (lower.includes('check email') || lower.includes('new email') || lower.includes('any email')) {
+  if ((lower.includes('check') && lower.includes('email')) || lower.includes('new email') || lower.includes('any email')) {
     return fetchAndSummarise(ctx)
   }
 
@@ -65,6 +69,10 @@ async function handleMessage(ctx) {
     return handleProgressUpdate(ctx, text)
   }
 
+  // "add new project: [name]" or "add project: [name]"
+  const addProjectMatch = text.match(/add\s+(?:new\s+)?project[:\s]+(.+)/i)
+  if (addProjectMatch) return handleAddProject(ctx, addProjectMatch[1].trim())
+
   // "add note to [project]: [text]"
   const noteMatch = text.match(/add\s+note\s+(?:to\s+)?(.+?):\s*(.+)/i)
   if (noteMatch) {
@@ -91,6 +99,8 @@ async function handleMessage(ctx) {
     return ctx.reply(summary)
   }
   if (intent.intent === 'update_project' && intent.projectName) return handleProgressUpdate(ctx, text)
+  if (intent.intent === 'compose_email' && intent.to) return composeNewEmail(ctx, intent.to, intent.brief || text)
+  if (intent.intent === 'check_emails') return fetchAndSummarise(ctx)
 
   // --- General chat ---
   const history = await getHistory(userId)

@@ -4,3 +4,5 @@ node_modules/
 .claude/
 .playwright-mcp/
 *.png
+.wwebjs_auth/
+.wwebjs_cache/

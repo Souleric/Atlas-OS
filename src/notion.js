@@ -134,8 +134,23 @@ async function logEmailToProject(pageId, emailData, summary) {
   await appendProjectNote(pageId, text)
 }
 
+async function createProject({ name, status = 'Not started', priority = 'P2', client = null, company = null, nextAction = null }) {
+  const properties = {
+    Project: { title: [{ text: { content: name } }] },
+    Status: { status: { name: status } },
+    Priority: { select: { name: priority } }
+  }
+  if (client) properties['Client'] = { rich_text: [{ text: { content: client } }] }
+  if (company) properties['Company'] = { select: { name: company } }
+  if (nextAction) properties['Next Action'] = { rich_text: [{ text: { content: nextAction } }] }
+
+  const page = await notion.pages.create({ parent: { database_id: PROJECTS_DB }, properties })
+  return page.id
+}
+
 module.exports = {
   getActiveProjects,
+  createProject,
   updateProject,
   updateProjectFull,
   appendProjectNote,

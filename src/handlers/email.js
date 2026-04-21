@@ -1,7 +1,10 @@
 const { sendApproval, getPending, setPending, clearPending, escapeMarkdown, OWNER_ID } = require('../bot')
+const { executeNotionUpdate } = require('./notion')
 const { sendEmail, getAccountById, checkNow } = require('../email')
 const { triageEmail, draftEmailReply, composeEmail } = require('../ai')
 const { searchContacts } = require('../notion')
+
+const isSendConfirm = n => ['yes','send','ok','go','confirm'].includes(n) || n.startsWith('yes ') || n.startsWith('ok send') || n.startsWith('send it')
 
 // In-memory store of last fetched emails — keyed by index (1-based)
 let emailStore = []
@@ -92,7 +95,7 @@ async function handleApprovalReply(ctx, text) {
   const normalized = text.trim().toLowerCase()
 
   if (pending.type === 'email_reply') {
-    if (normalized === 'yes' || normalized === 'send' || normalized.startsWith('yes ') || normalized === 'yes send') {
+    if (isSendConfirm(normalized)) {
       const account = getAccountById(pending.emailData.accountId)
       console.log(`[approval] email_reply → sending to=${pending.emailData.from} account=${account?.id || 'NOT FOUND'}`)
       if (!account) {
@@ -182,7 +185,7 @@ async function handleApprovalReply(ctx, text) {
       return true
     }
 
-    if (normalized === 'yes' || normalized === 'send' || normalized.startsWith('yes ') || normalized === 'yes send') {
+    if (isSendConfirm(normalized)) {
       const accounts = JSON.parse(process.env.EMAIL_ACCOUNTS || '[]')
       const account = accounts.find(a => a.id === pending.emailData.accountId) || accounts[0]
       console.log(`[approval] email_compose → to=${pending.emailData.from} account=${account?.id || 'NOT FOUND'} accountId=${pending.emailData.accountId}`)
@@ -263,7 +266,7 @@ async function handleApprovalReply(ctx, text) {
   if (pending.type === 'notion_update') {
     if (normalized === 'yes') {
       try {
-        await pending.updateFn()
+        await executeNotionUpdate(pending)
         await ctx.reply('Notion updated.')
       } catch (err) {
         await ctx.reply(`Notion update failed: ${err.message}`)

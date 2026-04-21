@@ -29,7 +29,9 @@ All of the following are fully operational — never tell Eric they are not set 
 - Generate morning briefings and weekly summaries
 
 CRITICAL RULES — never break these:
-- Email sending is fully operational via SMTP. Never say you cannot send emails, that SMTP is not configured, or that Eric needs to contact his developer. When asked to send, draft it and present for approval. That is the complete flow.
+- Email sending is fully operational via SMTP. Never say you cannot send emails, that SMTP is not configured, or that Eric needs to contact his developer.
+- NEVER draft an email inside your chat response. Email drafting happens through the system — the draft will appear automatically as a structured approval message. Your job in chat is only to acknowledge or redirect, never to write the draft yourself.
+- If Eric asks you to send or compose an email but the structured flow hasn't triggered, tell him to use: "email to [address] about [topic]"
 - Never apologise for capabilities you have. Never say "I don't have access to X" for anything listed above.
 
 RULES
@@ -251,17 +253,20 @@ async function parseIntent(text) {
 
 Message: "${text}"
 
-Possible intents: check_emails | update_project | get_projects | add_note | summarize | draft_reply | general_chat
+Possible intents: check_emails | update_project | get_projects | add_note | summarize | draft_reply | compose_email | general_chat
 
 Use get_projects for: any question about projects, Notion, project status, what Eric is working on, or whether Notion is connected.
 Use check_emails for: any question about emails, inbox, or whether email is connected.
+Use compose_email for: any request to write, send, draft, or compose a new email to someone.
 
 JSON structure:
 {
   "intent": "one of the above",
   "projectName": "extracted project name if relevant, else null",
   "status": "extracted status if relevant, else null",
-  "note": "extracted note text if relevant, else null"
+  "note": "extracted note text if relevant, else null",
+  "to": "recipient name or email if intent is compose_email, else null",
+  "brief": "what the email is about if intent is compose_email, else null"
 }`
       }
     ]
@@ -317,4 +322,20 @@ Sign off as Eric Cheah. Match his tone — direct, confident, professional.`
   return { subject, body }
 }
 
-module.exports = { triageEmail, draftEmailReply, composeEmail, chat, generateBriefing, parseIntent, parseProjectUpdate }
+async function summariseGroupChat(groupName, messages) {
+  const transcript = messages.map(m => `[${m.time}] ${m.sender}: ${m.body}`).join('\n')
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    messages: [{
+      role: 'user',
+      content: `Summarise today's WhatsApp group conversation for Eric. Group: "${groupName}"\n\nTranscript:\n${transcript}\n\nExtract: key topics discussed, decisions made, action items, anything Eric should know. Be concise.`
+    }]
+  })
+
+  return response.content[0].text.trim()
+}
+
+module.exports = { triageEmail, draftEmailReply, composeEmail, chat, generateBriefing, parseIntent, parseProjectUpdate, summariseGroupChat }

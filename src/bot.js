@@ -63,7 +63,7 @@ async function sendApproval(userId, action) {
     const { projectName, field, value } = action
     message = `📋 *Notion update*\n` +
       `Project: ${escapeMarkdown(projectName)}\n` +
-      `Change: ${escapeMarkdown(field)} → *${escapeMarkdown(value)}*\n\n` +
+      `Change: ${escapeMarkdown(field)} → ${escapeMarkdown(String(value).replace(/\*/g, ''))}\n\n` +
       `Reply *YES* to confirm · *NO* to cancel`
   } else if (action.type === 'email_compose') {
     return // caller handles its own prompt
